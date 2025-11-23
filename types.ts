@@ -1,3 +1,10 @@
+export interface NotePage {
+  id: string;
+  title: string;
+  content: string;
+  updatedAt: string;
+}
+
 export interface CountdownEvent {
   id: string;
   name: string;
@@ -6,6 +13,11 @@ export interface CountdownEvent {
   icon: string;
   color: 'yellow' | 'red' | 'blue' | 'purple' | 'green';
   createdAt: string;
+  updatedAt?: string;
+  
+  // New fields for detailed notes
+  isDetailedNotes?: boolean;
+  notes?: NotePage[];
 }
 
 export const CATEGORY_COLORS = {
