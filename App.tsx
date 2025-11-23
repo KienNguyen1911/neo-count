@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, LogOut, Loader2 } from 'lucide-react';
+import { Plus, LogOut, Loader2, Download, Bell, BellRing } from 'lucide-react';
 import { NeoButton } from './components/ui/NeoComponents';
 import { AddEventDrawer } from './components/AddEventDrawer';
 import { EventCard } from './components/EventCard';
@@ -18,6 +18,11 @@ export default function App() {
   
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CountdownEvent | null>(null);
+
+  // PWA & Notifications State
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState(Notification.permission);
 
   // 1. Check Auth Session
   useEffect(() => {
@@ -42,6 +47,64 @@ export default function App() {
     }
   }, [session]);
 
+  // 3. Handle PWA Install Prompt & Notifications
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsInstallable(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // Daily 6:30 AM Notification Check (Local simulation)
+    const checkDailyNotification = () => {
+      if (Notification.permission !== 'granted') return;
+      
+      const now = new Date();
+      // Check if it's 6:30 AM (approximate)
+      if (now.getHours() === 6 && now.getMinutes() === 30) {
+         const title = "Daily NeoCount Update";
+         const body = events.length > 0 
+           ? `You have ${events.length} active countdowns ticking away!` 
+           : "Start your day by adding a new countdown.";
+         
+         new Notification(title, {
+           body: body,
+           icon: 'https://api.iconify.design/lucide:hourglass.svg?color=%23121212'
+         });
+      }
+    };
+
+    // Check every minute
+    const interval = setInterval(checkDailyNotification, 60000);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      clearInterval(interval);
+    };
+  }, [events]);
+
+  const requestNotificationPermission = async () => {
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+    if (permission === 'granted') {
+      new Notification("NeoCount Notifications Enabled", {
+        body: "You will receive daily updates at 6:30 AM if the app is open.",
+      });
+    }
+  };
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setIsInstallable(false);
+    }
+    setDeferredPrompt(null);
+  };
+
   const fetchEvents = async () => {
     setIsLoadingData(true);
     const { data, error } = await supabase
@@ -52,8 +115,6 @@ export default function App() {
     if (error) {
       console.error('Error fetching events:', error);
     } else {
-      // Map DB fields to Typescript interface (snake_case to camelCase mapping handled manually if needed, 
-      // but here we matched DB columns to JSON mostly, except for snake_case columns)
       const mappedEvents: CountdownEvent[] = data.map((e: any) => ({
         id: e.id,
         name: e.name,
@@ -169,8 +230,27 @@ export default function App() {
             <h1 className="text-2xl font-black tracking-tighter uppercase hidden sm:block">NeoCount</h1>
           </div>
           
-          <div className="flex items-center gap-3">
-             <span className="hidden md:block text-xs font-bold uppercase bg-gray-200 px-2 py-1 rounded border border-neo-black">
+          <div className="flex items-center gap-2 md:gap-3">
+             {/* Install Button (Mobile/Desktop) */}
+             {isInstallable && (
+               <button
+                  onClick={handleInstallClick}
+                  className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-neo-blue border-2 border-neo-black rounded-md font-bold text-xs hover:bg-blue-300 transition-colors"
+               >
+                 <Download className="w-4 h-4" /> Install
+               </button>
+             )}
+
+             {/* Notifications Button */}
+             <button
+                onClick={requestNotificationPermission}
+                className={`p-2 rounded-md border-2 transition-all ${notificationPermission === 'granted' ? 'bg-neo-green border-neo-black' : 'border-transparent hover:bg-gray-200 hover:border-neo-black'}`}
+                title={notificationPermission === 'granted' ? "Notifications On" : "Enable Notifications"}
+             >
+               {notificationPermission === 'granted' ? <BellRing className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
+             </button>
+
+             <span className="hidden md:block text-xs font-bold uppercase bg-gray-200 px-2 py-1 rounded border border-neo-black truncate max-w-[150px]">
                {session.user.email}
              </span>
              <button 
@@ -187,12 +267,31 @@ export default function App() {
 
           <button 
             onClick={openCreate}
-            className="md:hidden w-10 h-10 bg-neo-yellow border-2 border-neo-black shadow-neo flex items-center justify-center rounded-lg active:translate-y-1 active:shadow-none transition-all"
+            className="md:hidden w-10 h-10 bg-neo-yellow border-2 border-neo-black shadow-neo flex items-center justify-center rounded-lg active:translate-y-1 active:shadow-none transition-all ml-2"
           >
             <Plus className="w-6 h-6" />
           </button>
         </div>
       </header>
+
+      {/* Mobile Install Banner if available */}
+      <AnimatePresence>
+        {isInstallable && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="md:hidden bg-neo-blue border-b-4 border-neo-black px-4 py-3"
+          >
+             <div className="flex items-center justify-between">
+               <span className="font-bold text-sm">Install App for offline use?</span>
+               <button onClick={handleInstallClick} className="bg-white border-2 border-neo-black px-3 py-1 rounded text-xs font-bold shadow-sm">
+                 Install
+               </button>
+             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-8 md:px-8">
